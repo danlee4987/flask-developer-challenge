@@ -10,6 +10,7 @@ providing a search across all public Gists for a given Github account.
 """
 
 import requests
+import re
 from flask import Flask, jsonify, request
 
 
@@ -46,6 +47,44 @@ def gists_for_user(username):
     return response.json()
 
 
+def retrieve_content(gist_id):
+    """Retrieves content of a gist, given its id.
+
+    Args:
+        gist_id(string): the id of the gist to retrieve
+
+    Returns:
+        Content of the gist (string).
+    """
+    id_url = 'https://api.github.com/gists/{id}'.format(id=gist_id)
+    response = requests.get(id_url)
+
+    get_data = response.json()['files']
+    gist_file = str(get_data.keys()[0])
+    g_file = get_data[gist_file]
+    content = g_file['content']
+
+    return content
+
+
+def regex_match(content, pattern):
+    """Searches gist content with a Regular Expression.
+
+    Args:
+        content(string): content of gist to search
+        pattern(string): Regular Expression to search
+    Returns:
+        Boolean value indicating whether the Regular Expression
+        was found or not.
+    """
+    p = re.compile(pattern)
+
+    if p.match(content):
+        return True
+    else:
+        return False
+
+
 @app.route("/api/v1/search", methods=['POST'])
 def search():
     """Provides matches for a single pattern across a single users gists.
@@ -65,19 +104,28 @@ def search():
     pattern = post_data['pattern']
 
     result = {}
+    matched = []
+    status = 'success'
+    return_url = 'https://gist.github.com/{username}/{id}'
     gists = gists_for_user(username)
-    # BONUS: Handle invalid users?
 
     for gist in gists:
-        # REQUIRED: Fetch each gist and check for the pattern
+        try:
+            gist_id = gist['id']
+            content = retrieve_content(gist_id)
+
+            if regex_match(content, pattern):
+                url = return_url.format(username=username, id=gist_id)
+                matched.append(url)
+        except Exception:
+            status = 'fail'
         # BONUS: What about huge gists?
         # BONUS: Can we cache results in a datastore/db?
-        pass
 
-    result['status'] = 'success'
+    result['status'] = status
     result['username'] = username
     result['pattern'] = pattern
-    result['matches'] = []
+    result['matches'] = matched
 
     return jsonify(result)
 
